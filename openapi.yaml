@@ -1,0 +1,132 @@
+openapi: 3.0.3
+info:
+  title: Jira Plans Hierarchy & Rollup API
+  description: Multi-tier hierarchy traversal for Jira Plans (Advanced Roadmaps) down to leaf sub-tasks with OAuth 2.0 (3LO) support.
+  version: 1.0.0
+servers:
+  - url: https://{service}-{project_number}.{region}.run.app
+    description: Google Cloud Run BYO Custom MCP Endpoint
+    variables:
+      service:
+        default: jira-plans-mcp
+      project_number:
+        default: YOUR_PROJECT_NUMBER
+      region:
+        default: us-central1
+paths:
+  /api/plans:
+    get:
+      operationId: list_plans
+      summary: List all available Jira Plans and Project Roadmap containers
+      description: Returns a list of active Jira Plans with their IDs, owners, target dates, and status.
+      responses:
+        '200':
+          description: Successful response with active Jira plans
+          content:
+            application/json:
+              schema:
+                type: object
+  /api/plans/{plan_id}/hierarchy:
+    get:
+      operationId: get_plan_hierarchy
+      summary: Get full multi-tier hierarchy of a Jira Plan down to leaf subtasks
+      description: Traverses Plan -> Initiatives -> Epics -> Stories -> Leaf Subtasks with aggregated progress rollups and blocker detection.
+      parameters:
+        - name: plan_id
+          in: path
+          required: true
+          description: The ID or key of the Jira Plan or Project to traverse
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Full nested hierarchy tree with rollup metrics
+          content:
+            application/json:
+              schema:
+                type: object
+  /api/plans/{plan_id}/blockers:
+    get:
+      operationId: get_leaf_blockers
+      summary: Discover all blocked leaf-level sub-tasks in a Jira Plan
+      description: Returns all blocked leaf sub-tasks on the critical path, including their full ancestor lineage and blocker reasons.
+      parameters:
+        - name: plan_id
+          in: path
+          required: true
+          description: The ID or key of the Jira Plan or Project
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of blocked leaf subtasks and lineage
+          content:
+            application/json:
+              schema:
+                type: object
+  /api/leaves:
+    get:
+      operationId: get_all_leaf_issues
+      summary: Query all lowest-level leaf subtasks across Jira Plans
+      description: Aggregates all leaf sub-tasks with optional filtering by plan_id, status (e.g. BLOCKED, DONE, In Progress), or assignee.
+      parameters:
+        - name: plan_id
+          in: query
+          required: false
+          schema:
+            type: string
+            default: all
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: assignee
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Filtered leaf issues and summary metrics
+          content:
+            application/json:
+              schema:
+                type: object
+  /api/issues/{issue_key}/descendants:
+    get:
+      operationId: get_issue_descendants
+      summary: Drill down into a specific Initiative or Epic key
+      description: Returns all child stories, tasks, and leaf subtasks under a specific Jira issue key.
+      parameters:
+        - name: issue_key
+          in: path
+          required: true
+          description: The Jira issue key of the Initiative, Epic, or Story
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Subtree and leaf rollup for the specified issue key
+          content:
+            application/json:
+              schema:
+                type: object
+components:
+  securitySchemes:
+    atlassian_oauth2:
+      type: oauth2
+      description: Atlassian 3LO OAuth 2.0 flow for Jira Cloud
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.atlassian.com/authorize
+          tokenUrl: https://auth.atlassian.com/oauth/token
+          scopes:
+            read:jira-work: Read Jira project and issue data, search for issues, and objects associated with issues
+            read:jira-user: View user information in Jira that the user has access to
+            offline_access: Refresh OAuth tokens in the background
+security:
+  - atlassian_oauth2:
+      - read:jira-work
+      - read:jira-user
+      - offline_access
